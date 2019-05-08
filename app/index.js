@@ -101,6 +101,7 @@ const actionsHandle = bot.subscribeToActions().pipe(
     if (event.id === "projects") {
       const projectId = _.find(availableProjects, ["name", event.value]);
       currentProjectId = projectId.id;
+      console.log("SELECTED PROJECT" , projectId);
       getSuites();
     } else if (event.id === "suites") {
       const suiteId = _.find(availableSuites, ["name", event.value]);
@@ -143,7 +144,7 @@ const actionsHandle = bot.subscribeToActions().pipe(
 
 // merging actionHandle with messageHandle
 new Promise((resolve, reject) => {
-  merge(messagesHandle, actionsHandle).subscribe({
+  merge(messagesHandle, actionsHandle).subscribe({  
     error: reject,
     complete: resolve
   });
@@ -282,6 +283,7 @@ function suitesToAction(suites) {
     label: "suite",
     options: []
   };
+  console.log("AVAILABLE SUITES", suites);
   suites.map(suite => {
     availableSuites.push(suite);
     suiteActions.options.push({ label: suite.name, value: suite.name });
@@ -307,6 +309,7 @@ function projectsToAction(projects) {
 
 function getSuites() {
   const project = _.find(availableProjects, ["id", currentProjectId]);
+  console.log("CURRENT PROJECT", project);
   testrail
     .getSuites(currentProjectId)
     .then(function(result) {

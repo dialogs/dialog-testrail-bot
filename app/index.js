@@ -18,7 +18,7 @@ var Testrail = require("testrail-api");
 
 var currentTestCaseCounter = 0;
 var currentProjectId = "";
-const currentUser = { name: "", peer: "" };
+
 var availableSuites = [];
 var availableTestCases = [];
 var availableStatuses = [];
@@ -86,7 +86,11 @@ const messagesHandle = bot.subscribeToMessages().pipe(
       await testrail
         .getProjects()
         .then(function(result) {
-          sendTextMessage("Available Projects", projectsToAction(result.body));
+          sendTextMessage(
+            "Available Projects",
+            message.peer,
+            projectsToAction(result.body)
+          );
         })
         .catch(function(error) {
           console.log(error.message);
@@ -98,18 +102,19 @@ const messagesHandle = bot.subscribeToMessages().pipe(
 //creating action handle
 const actionsHandle = bot.subscribeToActions().pipe(
   flatMap(async event => {
+    let peer = new Peer(event.uid);
     if (event.id === "projects") {
       const projectId = _.find(availableProjects, ["name", event.value]);
       currentProjectId = projectId.id;
-      console.log("SELECTED PROJECT" , projectId);
-      getSuites();
+      console.log("SELECTED PROJECT", projectId);
+      getSuites(peer);
     } else if (event.id === "suites") {
       const suiteId = _.find(availableSuites, ["name", event.value]);
       const addRunData = { suite_id: suiteId.id, name: "test_run" };
       testrail
         .addRun(currentProjectId, addRunData)
         .then(function(result) {
-          getTestCases(result);
+          getTestCases(result, peer);
         })
         .catch(function(error) {
           console.log(error.message);
@@ -125,14 +130,15 @@ const actionsHandle = bot.subscribeToActions().pipe(
           sendTextMessage(
             `Status Updated for Test Case ${
               availableTestCases[currentTestCaseCounter - 1].title
-            }`
+            }`,
+            peer
           );
         })
         .catch(function(error) {
           console.log(error.message);
         });
       if (currentTestCaseCounter < availableTestCases.length) {
-        addResult(availableTestCases[currentTestCaseCounter]);
+        addResult(availableTestCases[currentTestCaseCounter], peer);
       } else {
         testrail.closeRun(currentProjectId).catch(function(error) {
           console.log(error.message);
@@ -144,7 +150,7 @@ const actionsHandle = bot.subscribeToActions().pipe(
 
 // merging actionHandle with messageHandle
 new Promise((resolve, reject) => {
-  merge(messagesHandle, actionsHandle).subscribe({  
+  merge(messagesHandle, actionsHandle).subscribe({
     error: reject,
     complete: resolve
   });
@@ -158,21 +164,24 @@ action handle functions
 
 ------ */
 
-function getTestCases(result) {
+function getTestCases(result, peer) {
+  // console.log("RESULTS", result);
   testrail
-    .getTests(result.body.suite_id)
+    .getTests(result.body.id)
     .then(result => {
       availableTestCases = result.body;
-      if (availableTestCases.length !== 0) addResult(availableTestCases[0]);
+      if (availableTestCases.length !== 0)
+        addResult(availableTestCases[0], peer);
     })
     .catch(function(error) {
       console.log(error.message);
     });
 }
 
-function addResult(test) {
+function addResult(test, peer) {
   sendTextMessage(
     `Select result to add for ${test.title}`,
+    peer,
     stasusesButtonOptions
   );
   currentTestCaseCounter += 1;
@@ -240,8 +249,8 @@ function actionFormat(actionOptions) {
 }
 
 //actions is an array of format [{type:"" , id: "" , label: "" , options: ""}]
-function sendTextMessage(text, actions) {
-  var messageToSend = messageformat(currentUser.peer, text);
+function sendTextMessage(text, peer, actions) {
+  var messageToSend = messageformat(peer, text);
   var action = actions || null;
   var actionGroup = null;
   if (action !== null) {
@@ -252,8 +261,8 @@ function sendTextMessage(text, actions) {
   sendTextToBot(bot, messageToSend, actionGroup);
 }
 
-function messageformat(peers, texts) {
-  var message = { peer: peers, text: texts };
+function messageformat(peer, texts) {
+  var message = { peer: peer, text: texts };
   return message;
 }
 
@@ -272,8 +281,8 @@ function sendTextToBot(bot, message, actionGroup) {
 
 async function getCurrentUser(bot, peer) {
   const user = await bot.getUser(peer.id);
-  currentUser.name = user.name;
-  currentUser.peer = peer;
+  const currentUser = new User(user.name, peer, user.nick);
+  return currentUser;
 }
 
 function suitesToAction(suites) {
@@ -307,7 +316,7 @@ function projectsToAction(projects) {
   return projectsActionsArray;
 }
 
-function getSuites() {
+function getSuites(peer) {
   const project = _.find(availableProjects, ["id", currentProjectId]);
   console.log("CURRENT PROJECT", project);
   testrail
@@ -315,10 +324,24 @@ function getSuites() {
     .then(function(result) {
       sendTextMessage(
         `Available Suites in ${project.name}`,
+        peer,
         suitesToAction(result.body)
       );
     })
     .catch(function(error) {
       console.log(error.message);
     });
+}
+
+function User(name, peer, nick) {
+  const nickname = `@${nick}`;
+  this.name = name;
+  this.peer = peer;
+  this.nick = nickname;
+}
+
+function Peer(id) {
+  this.id = id;
+  this.type = "private";
+  this.strId = null;
 }
